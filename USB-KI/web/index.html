@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rover-KI</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --text:#1d2330; --muted:#6b7280; --accent:#c2410c; --accent2:#fff1e8; --border:#e2e5ea; --code:#1e2430; --codetext:#e6e9ef; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14161b; --card:#1d2027; --text:#e6e8ec; --muted:#9aa1ad; --accent:#fb923c; --accent2:#2a2018; --border:#2d313a; --code:#0f1116; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+  header { padding:10px 16px; background:var(--card); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  #status { font-size:13px; padding:3px 10px; border-radius:99px; background:var(--accent2); color:var(--accent); }
+  #status.ok { background:#e7f6ec; color:#15803d; }
+  header .sp { flex:1; }
+  button { font:inherit; cursor:pointer; border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:8px; padding:6px 12px; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  #chat { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .msg { max-width:900px; width:100%; margin:0 auto; padding:10px 14px; border-radius:10px; line-height:1.5; white-space:pre-wrap; word-wrap:break-word; }
+  .user { background:var(--accent2); border:1px solid var(--border); }
+  .bot { background:var(--card); border:1px solid var(--border); }
+  .msg .who { font-size:12px; color:var(--muted); margin-bottom:4px; font-weight:600; }
+  .codebox { position:relative; margin:8px 0; }
+  .codebox pre { background:var(--code); color:var(--codetext); padding:12px; border-radius:8px; overflow-x:auto; margin:0; white-space:pre; font-family:Consolas,"Courier New",monospace; font-size:13.5px; }
+  .codebox button { position:absolute; top:6px; right:6px; font-size:12px; padding:2px 8px; background:#2d3442; color:#fff; border-color:#444; }
+  code.inl { background:var(--accent2); padding:1px 4px; border-radius:4px; font-family:Consolas,monospace; }
+  #quick { max-width:900px; width:100%; margin:0 auto; display:flex; gap:6px; flex-wrap:wrap; padding:0 16px; }
+  #quick button { font-size:13px; }
+  #files { max-width:900px; width:100%; margin:0 auto; padding:4px 16px; font-size:13px; color:var(--muted); }
+  #files span { display:inline-block; background:var(--card); border:1px solid var(--border); border-radius:6px; padding:1px 8px; margin-right:6px; }
+  #files span b { cursor:pointer; margin-left:4px; color:var(--accent); }
+  form { max-width:900px; width:100%; margin:0 auto; padding:8px 16px 14px; display:flex; gap:8px; align-items:flex-end; }
+  textarea { flex:1; resize:vertical; min-height:60px; max-height:40vh; font:inherit; padding:10px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+  .side { display:flex; flex-direction:column; gap:6px; }
+  .hint { font-size:12px; color:var(--muted); text-align:center; padding-bottom:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🤖 Rover-KI</h1>
+  <span id="status">KI lädt …</span>
+  <span class="sp"></span>
+  <button id="neu" title="Unterhaltung löschen">Neuer Chat</button>
+</header>
+
+<div id="chat"></div>
+
+<div id="quick">
+  <button data-q="Erkläre mir diesen Code Schritt für Schritt:&#10;&#10;">Code erklären</button>
+  <button data-q="Mein Code funktioniert nicht. Finde den Fehler und erkläre ihn:&#10;&#10;">Fehler finden</button>
+  <button data-q="Greenfoot zeigt diese Fehlermeldung. Was bedeutet sie und wie behebe ich sie?&#10;&#10;">Fehlermeldung</button>
+  <button data-q="Schreibe eine Methode für den Rover, die Folgendes macht: ">Methode schreiben</button>
+  <button data-q="Gib mir einen Tipp (noch nicht die ganze Lösung) für diese Aufgabe: ">Nur Tipp</button>
+</div>
+<div id="files"></div>
+
+<form id="form">
+  <textarea id="eingabe" placeholder="Frag etwas zum Rover … (Enter = senden, Umschalt+Enter = neue Zeile)"></textarea>
+  <div class="side">
+    <button type="button" id="anhang" title="Rover.java o.ä. anhängen, damit die KI deinen Code sieht">📎 .java</button>
+    <button type="submit" class="primary" id="senden">Senden</button>
+  </div>
+  <input type="file" id="datei" accept=".java,.txt" multiple hidden>
+</form>
+<div class="hint">Die KI läuft nur auf diesem PC. Sie kann Fehler machen – Code immer testen und verstehen!</div>
+
+<script src="wissen.js"></script>
+<script>
+const SERVER = location.protocol.startsWith("http") ? "" : "http://127.0.0.1:8080";
+const chatEl = document.getElementById("chat");
+const eingabe = document.getElementById("eingabe");
+const senden = document.getElementById("senden");
+const statusEl = document.getElementById("status");
+const filesEl = document.getElementById("files");
+let verlauf = [];          // {role, content}
+let dateien = [];          // {name, text}
+let bereit = false, laeuft = false;
+
+// ---------- Server-Status ----------
+async function pruefen() {
+  try {
+    const r = await fetch(SERVER + "/health", { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && (!j.status || j.status === "ok")) {
+      bereit = true; statusEl.textContent = "KI bereit"; statusEl.className = "ok"; return;
+    }
+    statusEl.textContent = "Modell lädt …";
+  } catch (e) { statusEl.textContent = "Warte auf KI … (schwarzes Fenster offen?)"; }
+  statusEl.className = ""; bereit = false;
+  setTimeout(pruefen, 2000);
+}
+pruefen();
+
+// ---------- Darstellung ----------
+function esc(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function render(text) {
+  const teile = text.split(/```/);
+  let html = "";
+  teile.forEach((t, i) => {
+    if (i % 2 === 1) {
+      const code = t.replace(/^[a-zA-Z]*\n/, "");
+      html += '<div class="codebox"><button onclick="kopieren(this)">Kopieren</button><pre>' + esc(code) + '</pre></div>';
+    } else {
+      html += esc(t).replace(/`([^`\n]+)`/g, '<code class="inl">$1</code>').replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+    }
+  });
+  return html;
+}
+function kopieren(btn) {
+  const txt = btn.nextElementSibling.textContent;
+  const fertig = () => { btn.textContent = "Kopiert ✓"; setTimeout(() => btn.textContent = "Kopieren", 1500); };
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(fertig, () => altKopie(txt, fertig));
+  else altKopie(txt, fertig);
+}
+function altKopie(txt, fertig) {
+  const t = document.createElement("textarea"); t.value = txt; document.body.appendChild(t);
+  t.select(); document.execCommand("copy"); t.remove(); fertig();
+}
+function blase(rolle, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + (rolle === "user" ? "user" : "bot");
+  d.innerHTML = '<div class="who">' + (rolle === "user" ? "Du" : "Rover-KI") + '</div><div class="txt"></div>';
+  d.querySelector(".txt").innerHTML = render(text);
+  chatEl.appendChild(d); chatEl.scrollTop = chatEl.scrollHeight;
+  return d.querySelector(".txt");
+}
+function begruessung() {
+  blase("bot", "Hallo! Ich kenne das Rover-Szenario (Planet, Rover, Gestein, Hügel, Marke).\n\n" +
+    "Tipp: Häng mit 📎 deine `Rover.java` an, dann sehe ich deinen aktuellen Code.\n" +
+    "Beispiel-Frage: „Der Rover soll bis zum Hügel fahren und dabei alle Gesteine analysieren.“");
+}
+begruessung();
+
+// ---------- Dateien anhängen ----------
+document.getElementById("anhang").onclick = () => document.getElementById("datei").click();
+document.getElementById("datei").onchange = async (e) => {
+  for (const f of e.target.files) {
+    const buf = await f.arrayBuffer();
+    let text;
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+    catch { text = new TextDecoder("windows-1252").decode(buf); }   // Greenfoot speichert oft so
+    dateien = dateien.filter(d => d.name !== f.name);
+    dateien.push({ name: f.name, text });
+  }
+  e.target.value = ""; zeigeDateien();
+};
+function zeigeDateien() {
+  filesEl.innerHTML = dateien.length ? "Angehängt: " + dateien.map((d, i) =>
+    '<span>' + esc(d.name) + '<b onclick="dateien.splice(' + i + ',1);zeigeDateien()">✕</b></span>').join("") : "";
+}
+
+// ---------- Schnellbuttons ----------
+document.querySelectorAll("#quick button").forEach(b => b.onclick = () => {
+  eingabe.value = b.dataset.q + eingabe.value; eingabe.focus();
+  eingabe.setSelectionRange(eingabe.value.length, eingabe.value.length);
+});
+document.getElementById("neu").onclick = () => { verlauf = []; chatEl.innerHTML = ""; begruessung(); };
+
+// ---------- Senden ----------
+eingabe.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("form").requestSubmit(); }
+});
+document.getElementById("form").onsubmit = async (e) => {
+  e.preventDefault();
+  const frage = eingabe.value.trim();
+  if (!frage || laeuft) return;
+  if (!bereit) { blase("bot", "Die KI ist noch nicht bereit. Warte, bis oben „KI bereit“ steht."); return; }
+
+  let inhalt = frage;
+  if (dateien.length) {
+    inhalt += "\n\nHier ist mein aktueller Code:\n" +
+      dateien.map(d => "--- " + d.name + " ---\n```java\n" + d.text + "\n```").join("\n");
+  }
+  blase("user", frage + (dateien.length ? "\n📎 " + dateien.map(d => d.name).join(", ") : ""));
+  eingabe.value = "";
+  // Im Verlauf nur die Frage merken; der angehängte Code wird nur bei der aktuellen Frage mitgeschickt,
+  // damit das Gedächtnis (Kontext) der KI nicht überläuft
+  verlauf.push({ role: "user", content: frage });
+  while (verlauf.length > 8) verlauf.shift();
+  const nachrichten = [{ role: "system", content: window.ROVER_WISSEN }, ...verlauf.slice(0, -1), { role: "user", content: inhalt }];
+
+  const ziel = blase("bot", "…");
+  laeuft = true; senden.disabled = true;
+  let antwort = "";
+  try {
+    const r = await fetch(SERVER + "/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "lokal",
+        messages: nachrichten,
+        temperature: 0.2, max_tokens: 1200, stream: true
+      })
+    });
+    if (!r.ok) throw new Error("Server antwortet mit " + r.status);
+    const reader = r.body.getReader(); const dec = new TextDecoder(); let rest = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      rest += dec.decode(value, { stream: true });
+      const zeilen = rest.split("\n"); rest = zeilen.pop();
+      for (const z of zeilen) {
+        const s = z.trim();
+        if (!s.startsWith("data:")) continue;
+        const daten = s.slice(5).trim();
+        if (daten === "[DONE]") continue;
+        try {
+          const j = JSON.parse(daten);
+          const stueck = j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.message?.content ?? "";
+          if (stueck) { antwort += stueck; ziel.innerHTML = render(antwort); chatEl.scrollTop = chatEl.scrollHeight; }
+        } catch {}
+      }
+    }
+    if (!antwort) throw new Error("Leere Antwort");
+    verlauf.push({ role: "assistant", content: antwort });
+  } catch (err) {
+    ziel.innerHTML = render("⚠️ Fehler: " + err.message + "\nLäuft das schwarze KI-Fenster noch?");
+    verlauf.pop();
+  }
+  laeuft = false; senden.disabled = false; eingabe.focus();
+};
+</script>
+</body>
+</html>

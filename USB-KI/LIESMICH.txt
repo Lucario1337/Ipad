@@ -14,6 +14,16 @@ SO GEHT'S
      "Schreib mir in Python ein Programm, das ..."
      "Warum funktioniert dieser Code nicht? <Code einfuegen>"
 
+ROVER-PROJEKT (Greenfoot "Planet")
+----------------------------------
+Die KI kennt das Rover-Szenario: alle Methoden (fahre, drehe, huegelVorhanden,
+gesteinVorhanden, analysiereGestein, setzeMarke, markeVorhanden, entferneMarke),
+die Weltgroesse, die Blickrichtungen und typische Fehler.
+- Mit dem Knopf ".java" deine Rover.java anhaengen, dann sieht die KI deinen Code.
+- Die Knoepfe "Code erklaeren", "Fehler finden", "Nur Tipp" usw. helfen beim Fragen.
+- Was die KI ueber das Projekt weiss, steht in web\wissen.js (kann man anpassen).
+- Im Ordner "Projekt" liegt das Original-Szenario Planet_1.03 (unveraendert).
+
 STICK
 -----
 - Mindestens 4 GB frei (Modell 1 oder 2), 8 GB fuer Modell 3.
