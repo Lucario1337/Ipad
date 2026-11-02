@@ -1,0 +1,40 @@
+USB-KI - eine Programmier-KI, die komplett vom USB-Stick laeuft
+================================================================
+
+Kein Internet und keine Installation am Schul-PC noetig.
+Die KI laeuft nur lokal auf dem PC, es werden keine Daten verschickt.
+
+SO GEHT'S
+---------
+1. Den ganzen Ordner "USB-KI" auf den USB-Stick kopieren.
+2. ZUHAUSE (mit Internet): "1_EINRICHTEN_zuhause.bat" doppelklicken
+   und ein Modell waehlen. Laedt ca. 1-5 GB auf den Stick.
+3. In der SCHULE: Stick einstecken, "2_KI_STARTEN.bat" doppelklicken.
+   Der Browser oeffnet sich mit einem Chat. Dort kannst du z.B. fragen:
+     "Schreib mir in Python ein Programm, das ..."
+     "Warum funktioniert dieser Code nicht? <Code einfuegen>"
+
+STICK
+-----
+- Mindestens 4 GB frei (Modell 1 oder 2), 8 GB fuer Modell 3.
+- Fuer Modell 3 muss der Stick exFAT oder NTFS formatiert sein
+  (FAT32 kann keine Dateien ueber 4 GB).
+- Ein schneller USB-3-Stick macht den Start deutlich schneller.
+
+WENN ES NICHT KLAPPT
+--------------------
+- "Windows hat den PC geschuetzt" (SmartScreen):
+  "Weitere Informationen" -> "Trotzdem ausfuehren".
+- Antivirus meldet llamafile.exe: das ist ein bekannter Fehlalarm bei
+  llamafile (Mozilla-Projekt), die Datei kommt direkt von GitHub.
+- Gar nichts passiert / "Diese App wurde blockiert":
+  Der Schul-PC verbietet Programme vom USB-Stick. Das kann man nicht
+  sinnvoll umgehen - frag die Lehrkraft oder den IT-Admin.
+- Sehr langsam: Modell 1 nehmen (einfach Einrichten nochmal starten).
+  Ohne Grafikkarte rechnet die KI auf dem Prozessor, das ist normal.
+
+WICHTIG
+-------
+Frag vorher kurz deine Lehrkraft, ob du eigene Programme vom Stick
+benutzen darfst - viele Schulen haben dafuer Regeln.
+Und: Die KI kann Fehler machen. Code immer testen und verstehen!
