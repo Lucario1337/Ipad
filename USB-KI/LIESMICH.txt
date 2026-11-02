@@ -35,8 +35,13 @@ WENN ES NICHT KLAPPT
 --------------------
 - "Windows hat den PC geschuetzt" (SmartScreen):
   "Weitere Informationen" -> "Trotzdem ausfuehren".
-- Antivirus meldet llamafile.exe: das ist ein bekannter Fehlalarm bei
-  llamafile (Mozilla-Projekt), die Datei kommt direkt von GitHub.
+- "Die KI-Dateien fehlen": Das Fenster sagt jetzt genau, WELCHE Datei fehlt.
+  Haeufigste Gruende: ZIP nicht entpackt (immer erst "Alle extrahieren"),
+  oder der Virenscanner hat das Programm geloescht (Fehlalarm). Dann in
+  "Windows-Sicherheit" -> "Schutzverlauf" die Datei wiederherstellen und
+  Einrichten nochmal starten. Ein fertiges Modell wird nicht neu geladen.
+- Das KI-Programm ist llama.cpp (llama-server.exe) von GitHub. Nur falls das
+  nicht klappt, wird ersatzweise llamafile.exe geladen.
 - Gar nichts passiert / "Diese App wurde blockiert":
   Der Schul-PC verbietet Programme vom USB-Stick. Das kann man nicht
   sinnvoll umgehen - frag die Lehrkraft oder den IT-Admin.
