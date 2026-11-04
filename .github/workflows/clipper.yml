@@ -1,0 +1,66 @@
+name: Stream-Clipper
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "VOD-URL (Twitch, YouTube, Kick …) – nur Streams mit Clipping-Erlaubnis"
+        required: true
+      clips:
+        description: "Anzahl Clips"
+        default: "6"
+      length:
+        description: "Länge pro Clip-Kandidat (Sekunden)"
+        default: "45"
+      layout:
+        description: "blur oder facecam"
+        default: "blur"
+      cam:
+        description: "Nur bei facecam: Facecam-Bereich x:y:breite:höhe (z. B. 1500:780:420:300)"
+        default: ""
+      lang:
+        description: "Sprache des Streams (de, en, auto)"
+        default: "de"
+      streamer:
+        description: "Name des Streamers (optional)"
+        default: ""
+
+jobs:
+  clip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: ffmpeg + Schriften installieren
+        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg fonts-dejavu-core
+
+      - name: Python-Pakete installieren
+        run: pip install -r streamer-clipping/clipper/requirements.txt
+
+      - name: Clips erstellen
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          IN_URL: ${{ inputs.url }}
+          IN_CLIPS: ${{ inputs.clips }}
+          IN_LENGTH: ${{ inputs.length }}
+          IN_LAYOUT: ${{ inputs.layout }}
+          IN_CAM: ${{ inputs.cam }}
+          IN_LANG: ${{ inputs.lang }}
+          IN_STREAMER: ${{ inputs.streamer }}
+        run: |
+          ARGS=(--url "$IN_URL" --clips "$IN_CLIPS" --length "$IN_LENGTH" \
+                --layout "$IN_LAYOUT" --lang "$IN_LANG" --streamer "$IN_STREAMER" --out clips)
+          if [ -n "$IN_CAM" ]; then ARGS+=(--cam "$IN_CAM"); fi
+          python streamer-clipping/clipper/clipper.py "${ARGS[@]}"
+
+      - name: Clips zum Download bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: clips
+          path: clips/
+          retention-days: 7
