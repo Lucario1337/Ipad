@@ -21,22 +21,23 @@ if errorlevel 1 (
 
 echo ==========================================================
 echo   USB-KI startet ...
-echo   Gleich oeffnet sich die Rover-KI im Browser.
-echo   Falls nicht: die Datei web\index.html auf dem Stick oeffnen.
-echo   Einfacher Ersatz-Chat: http://127.0.0.1:8080
+echo   Sobald die KI geladen ist, oeffnet sich die Rover-KI im Browser.
+echo   Falls nicht: im Browser  http://127.0.0.1:8080  eingeben.
 echo.
+echo   Die vielen Textzeilen hier sind normal.
 echo   Zum Beenden dieses Fenster schliessen.
 echo ==========================================================
 echo.
 
-rem Rover-KI-Chat oeffnen - die Seite wartet selbst, bis das Modell geladen ist
-start "" "%~dp0web\index.html"
+rem Browser oeffnen, sobald der KI-Server antwortet. Die Rover-KI-Seite
+rem kommt direkt vom KI-Server (--path), so blockiert der Browser nichts.
+start "" /min cmd /c "for /l %%i in (1,1,150) do (curl -s -f -o nul http://127.0.0.1:8080/health && (start http://127.0.0.1:8080/ & exit) & ping -n 3 127.0.0.1 >nul)"
 
 echo %KIPROG% | findstr /i "llamafile" >nul
 if not errorlevel 1 (
-  "%KIPROG%" --server --nobrowser -m "daten\ki-modell.gguf" --host 127.0.0.1 --port 8080 -c 8192 -ngl 0
+  "%KIPROG%" --server --nobrowser -m "daten\ki-modell.gguf" --host 127.0.0.1 --port 8080 -c 8192 -ngl 0 --path "%~dp0web"
 ) else (
-  "%KIPROG%" -m "daten\ki-modell.gguf" --host 127.0.0.1 --port 8080 -c 8192
+  "%KIPROG%" -m "daten\ki-modell.gguf" --host 127.0.0.1 --port 8080 -c 8192 --path "%~dp0web"
 )
 echo.
 echo Die KI wurde beendet.

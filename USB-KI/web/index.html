@@ -83,12 +83,15 @@ let bereit = false, laeuft = false;
 async function pruefen() {
   try {
     const r = await fetch(SERVER + "/health", { cache: "no-store" });
-    const j = await r.json().catch(() => ({}));
-    if (r.ok && (!j.status || j.status === "ok")) {
+    if (r.ok) {
       bereit = true; statusEl.textContent = "KI bereit"; statusEl.className = "ok"; return;
     }
     statusEl.textContent = "Modell lädt …";
-  } catch (e) { statusEl.textContent = "Warte auf KI … (schwarzes Fenster offen?)"; }
+  } catch (e) {
+    statusEl.textContent = SERVER
+      ? "Keine Verbindung – öffne stattdessen http://127.0.0.1:8080 im Browser"
+      : "Warte auf KI … (schwarzes Fenster offen?)";
+  }
   statusEl.className = ""; bereit = false;
   setTimeout(pruefen, 2000);
 }

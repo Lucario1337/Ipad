@@ -45,6 +45,9 @@ WENN ES NICHT KLAPPT
 - Gar nichts passiert / "Diese App wurde blockiert":
   Der Schul-PC verbietet Programme vom USB-Stick. Das kann man nicht
   sinnvoll umgehen - frag die Lehrkraft oder den IT-Admin.
+- Das schwarze Fenster zeigt "llama server listening at http://127.0.0.1:8080",
+  aber oben steht "Warte auf KI" / "Keine Verbindung": im Browser die Adresse
+  http://127.0.0.1:8080 eingeben. Die vielen Textzeilen im Fenster sind normal.
 - Sehr langsam: Modell 1 nehmen (einfach Einrichten nochmal starten).
   Ohne Grafikkarte rechnet die KI auf dem Prozessor, das ist normal.
 
