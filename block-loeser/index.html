@@ -1,0 +1,441 @@
+<title>Block-Löser</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: one working column — board on top, three piece trays, then the move plan as a strip of step boards. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --sunk:#dde3ea; --line:#c6cfd9;
+  --fg:#17202b; --muted:#5b6878;
+  --accent:#e8890c; --accent-fg:#1d1200;
+  --cell:#c9d2dc; --filled:#3d5a80;
+  --p1:#e8890c; --p2:#1f9d8b; --p3:#d6456b;
+  --clear:#f6d365;
+  --ok:#1f8a4c; --bad:#c0392b;
+  --display:"Lexend", "Trebuchet MS", system-ui, sans-serif;
+  --body:"Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10161d; --surface:#18212b; --sunk:#0c1117; --line:#2a3644;
+  --fg:#e7edf3; --muted:#93a1b1;
+  --accent:#f5a03a; --accent-fg:#1d1200;
+  --cell:#223040; --filled:#6f93c2;
+  --p1:#f5a03a; --p2:#2fc2ad; --p3:#ef6a8c; --clear:#c9a83a;
+  --ok:#4cc27e; --bad:#ef6b5b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10161d; --surface:#18212b; --sunk:#0c1117; --line:#2a3644;
+  --fg:#e7edf3; --muted:#93a1b1;
+  --accent:#f5a03a; --accent-fg:#1d1200;
+  --cell:#223040; --filled:#6f93c2;
+  --p1:#f5a03a; --p2:#2fc2ad; --p3:#ef6a8c; --clear:#c9a83a;
+  --ok:#4cc27e; --bad:#ef6b5b; color-scheme:dark}
+*{box-sizing:border-box} [hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+main{max-width:980px;margin:0 auto;display:grid;gap:20px}
+h1{font-family:var(--display);font-weight:700;font-size:1.7rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-family:var(--display);font-weight:500;font-size:1.05rem;margin:0;text-wrap:balance}
+.lede{color:var(--muted);margin:4px 0 0;max-width:62ch}
+.label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:760px){.top{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px;min-width:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.spread{justify-content:space-between}
+button{font:inherit;font-weight:600;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:9px 14px;cursor:pointer;touch-action:manipulation}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:transparent;font-size:1.05rem;padding:13px 18px}
+button.small{padding:6px 10px;font-size:.85rem}
+button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+
+/* board */
+.board{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;background:var(--sunk);padding:6px;border-radius:12px;
+  aspect-ratio:1;max-width:100%;width:100%;touch-action:none;user-select:none;-webkit-user-select:none}
+.cell{border-radius:5px;background:var(--cell)}
+.cell.on{background:var(--filled);box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.board.mini{gap:2px;padding:4px;border-radius:8px}
+.board.mini .cell{border-radius:2px}
+.cell.p1{background:var(--p1)} .cell.p2{background:var(--p2)} .cell.p3{background:var(--p3)}
+.cell.ghost{outline:2px dashed var(--muted);outline-offset:-2px}
+.cell.cl{box-shadow:inset 0 0 0 3px var(--clear)}
+
+/* trays */
+.trays{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.tray{aspect-ratio:1;border:2px dashed var(--line);border-radius:12px;background:var(--sunk);display:grid;place-items:center;padding:10px;position:relative;min-width:0}
+.tray.filled{border-style:solid}
+.tray .tag{position:absolute;top:6px;left:8px;font-size:.72rem;font-weight:700;color:var(--muted)}
+.tray .plus{font-size:1.8rem;color:var(--muted);font-family:var(--display)}
+.shape{display:grid;gap:3px}
+.shape i{display:block;width:var(--s,16px);height:var(--s,16px);border-radius:3px}
+.shape i.on{background:var(--c,var(--filled))}
+
+/* result */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:560px){.steps{grid-template-columns:minmax(0,1fr)}}
+.step{display:grid;gap:8px;min-width:0}
+.step .head{display:flex;gap:8px;align-items:center}
+.dot{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-family:var(--display);color:#fff;flex:none}
+.step p{margin:0;color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--clear);color:#3a2a00}
+.verdict{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.status{font-weight:600}
+.status.ok{color:var(--ok)} .status.bad{color:var(--bad)}
+.stats{display:flex;gap:18px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.stats b{font-family:var(--display);font-size:1.25rem;display:block}
+.example{font-size:.8rem;color:var(--muted)}
+
+/* picker sheet */
+.sheet{position:fixed;inset:0;background:rgba(5,10,15,.55);display:grid;align-items:end;justify-items:center;z-index:20}
+.sheet .box{background:var(--surface);color:var(--fg);width:min(760px,100%);max-height:85vh;overflow:auto;border-radius:18px 18px 0 0;
+  padding:16px max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:grid;gap:14px}
+.lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:8px}
+.lib button{aspect-ratio:1;display:grid;place-items:center;padding:6px;background:var(--sunk);border-color:transparent}
+.lib button:hover{border-color:var(--accent)}
+.editor{display:grid;grid-template-columns:repeat(5,38px);gap:4px;touch-action:none}
+.editor .cell{width:38px;height:38px;cursor:pointer}
+.editor .cell.on{background:var(--accent)}
+details summary{cursor:pointer;font-weight:600}
+.hint{font-size:.85rem;color:var(--muted);margin:0}
+@media (prefers-reduced-motion:no-preference){.cell{transition:background .12s}}
+</style>
+
+<main>
+  <header>
+    <h1>Block-Löser</h1>
+    <p class="lede">Für Block Blast: Tippe das Spielfeld so ab, wie es auf deinem Bildschirm aussieht, wähle die drei Teile unten aus und lass dir die beste Reihenfolge und Position berechnen.</p>
+  </header>
+
+  <div class="top">
+    <section class="panel" aria-labelledby="h-board">
+      <div class="row spread">
+        <h2 id="h-board">Spielfeld</h2>
+        <div class="row">
+          <button class="small" id="btn-invert" type="button">Umkehren</button>
+          <button class="small" id="btn-clear" type="button">Leeren</button>
+        </div>
+      </div>
+      <div class="board" id="board" aria-label="Spielfeld 8 mal 8, tippen oder wischen zum Füllen"></div>
+      <p class="hint">Tippen oder mit dem Finger wischen füllt Felder; über ein volles Feld wischen leert sie wieder.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-pieces">
+      <h2 id="h-pieces">Die drei Teile</h2>
+      <div class="trays" id="trays"></div>
+      <p class="hint">Auf ein Feld tippen, um das Teil zu wählen. Leere Felder werden übersprungen.</p>
+      <div class="row">
+        <span class="label">Strategie</span>
+        <button class="small" type="button" data-mode="safe" aria-pressed="true">Sicher überleben</button>
+        <button class="small" type="button" data-mode="combo" aria-pressed="false">Punkte &amp; Combos</button>
+      </div>
+      <button class="primary" id="btn-solve" type="button">Besten Zug berechnen</button>
+      <div class="verdict"><span class="status" id="status"></span></div>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="h-plan" id="plan">
+    <div class="row spread">
+      <h2 id="h-plan">So legst du die Teile</h2>
+      <button class="small" id="btn-apply" type="button">Ergebnis übernehmen &amp; nächste Runde</button>
+    </div>
+    <p class="example" id="example-note">Beispiel: Spielfeld und Teile sind vorausgefüllt, damit du siehst, wie es funktioniert.</p>
+    <div class="stats" id="stats"></div>
+    <div class="steps" id="steps"></div>
+  </section>
+</main>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="h-sheet">
+    <div class="row spread">
+      <h2 id="h-sheet">Teil wählen</h2>
+      <div class="row">
+        <button class="small" type="button" id="btn-empty">Feld leeren</button>
+        <button class="small" type="button" id="btn-close">Schließen</button>
+      </div>
+    </div>
+    <div class="lib" id="lib"></div>
+    <details>
+      <summary>Teil fehlt? Selbst zeichnen</summary>
+      <div class="row" style="margin-top:10px;align-items:end">
+        <div class="editor" id="editor"></div>
+        <button type="button" id="btn-custom">Dieses Teil nehmen</button>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const PC = new Uint8Array(256); for (let i=1;i<256;i++) PC[i]=PC[i>>1]+(i&1);
+const COLORS = ["var(--p1)","var(--p2)","var(--p3)"];
+
+/* ---------- pieces ---------- */
+const BASE = [
+  ["#"],["##"],["###"],["####"],["#####"],
+  ["##","##"],["###","###"],["###","###","###"],
+  ["#.","##"],["#.","#.","##"],["#..","#..","###"],
+  ["###",".#."],[".##","##."],["#.",".#"],["#..",".#.","..#"],["##.","###"]
+];
+function norm(cells){
+  const mr=Math.min(...cells.map(c=>c[0])), mc=Math.min(...cells.map(c=>c[1]));
+  const out=cells.map(([r,c])=>[r-mr,c-mc]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+  return out;
+}
+const keyOf = cells => norm(cells).map(c=>c.join(",")).join(";");
+function makePiece(cells){
+  cells = norm(cells);
+  const h=Math.max(...cells.map(c=>c[0]))+1, w=Math.max(...cells.map(c=>c[1]))+1;
+  const masks=new Array(h).fill(0);
+  for (const [r,c] of cells) masks[r]|=1<<c;
+  return {key:keyOf(cells), cells, w, h, masks, n:cells.length};
+}
+const LIB=[]; const seen=new Set();
+for (const s of BASE){
+  if (!s.length) continue;
+  let cells=[]; s.forEach((line,r)=>[...line].forEach((ch,c)=>{ if(ch==="#") cells.push([r,c]); }));
+  for (let m=0;m<2;m++){
+    let cur = m ? cells.map(([r,c])=>[r,-c]) : cells;
+    for (let k=0;k<4;k++){
+      cur = cur.map(([r,c])=>[c,-r]);
+      const p=makePiece(cur);
+      if (!seen.has(p.key)){ seen.add(p.key); LIB.push(p); }
+    }
+  }
+}
+LIB.sort((a,b)=>a.n-b.n||a.h-b.h||a.w-b.w);
+const byKey = k => LIB.find(p=>p.key===k) || (k ? makePiece(k.split(";").map(s=>s.split(",").map(Number))) : null);
+
+/* ---------- state ---------- */
+let board = new Uint8Array(8);
+let slots = [null,null,null];
+let mode = "safe";
+let result = null;
+let isExample = true;
+
+function save(){ try{ localStorage.setItem("bl-state", JSON.stringify({b:[...board], s:slots.map(p=>p?p.key:null), m:mode})); }catch(e){} }
+function load(){
+  try{
+    const raw = localStorage.getItem("bl-state"); if(!raw) return false;
+    const st = JSON.parse(raw);
+    board = Uint8Array.from(st.b); slots = st.s.map(k=>k?byKey(k):null); mode = st.m||"safe";
+    return true;
+  }catch(e){ return false; }
+}
+function loadExample(){
+  const rows = ["##....##","#.....##","........","........","##.##..#","###.####","#.######","##.#####"];
+  board = Uint8Array.from(rows.map(r=>[...r].reduce((m,ch,c)=>ch==="#"?m|1<<c:m,0)));
+  slots = [byKey(keyOf([[0,0],[1,0],[2,0],[3,0]])), byKey(keyOf([[0,0],[0,1],[1,0],[1,1]])), byKey(keyOf([[0,0],[1,0],[2,0],[2,1],[2,2]]))];
+}
+
+/* ---------- solver ---------- */
+function health(rows){
+  let filled=0, perim=0, iso=0;
+  for (let i=0;i<8;i++){
+    const r=rows[i]; filled+=PC[r];
+    perim+=PC[(r^(r>>1))&127];
+    if(i<7) perim+=PC[r^rows[i+1]];
+    const e=~r&255;
+    const up = i>0 ? ~rows[i-1]&255 : 0, dn = i<7 ? ~rows[i+1]&255 : 0;
+    iso += PC[e & ~((e<<1)|(e>>1)|up|dn) & 255];
+  }
+  let f3=0,f22=0,f5h=0,f5v=0;
+  for (let i=0;i<8;i++){ const z=~rows[i]&255; if (z&(z>>1)&(z>>2)&(z>>3)&(z>>4)) { f5h=1; break; } }
+  for (let i=0;i<=3;i++){ if ((~(rows[i]|rows[i+1]|rows[i+2]|rows[i+3]|rows[i+4]))&255){ f5v=1; break; } }
+  for (let i=0;i<=5;i++){ const z=~(rows[i]|rows[i+1]|rows[i+2])&255; if (z&(z>>1)&(z>>2)){ f3=1; break; } }
+  for (let i=0;i<=6;i++){ const z=~(rows[i]|rows[i+1])&255; if (z&(z>>1)){ f22=1; break; } }
+  return (64-filled)*1.0 - perim*0.9 - iso*9 + (f3?14:-40) + (f5h?6:-14) + (f5v?6:-14) + (f22?0:-30);
+}
+
+function solve(rows, pieces){
+  const n = pieces.length;
+  const W = mode==="combo" ? {clear:2.2, health:0.7} : {clear:1, health:1.3};
+  let best = {placed:-1, value:-Infinity, path:[]};
+  const perms=[]; const permSeen=new Set();
+  (function gen(a,used){ if(a.length===n){ const k=a.map(i=>pieces[i].key).join("|"); if(!permSeen.has(k)){permSeen.add(k);perms.push(a.slice());} return; }
+    for(let i=0;i<n;i++) if(!used[i]){used[i]=1;a.push(i);gen(a,used);a.pop();used[i]=0;} })([],[]);
+  const path=[];
+  function leaf(rws, placed, gain){
+    const v = gain*W.clear + health(rws)*W.health;
+    if (placed>best.placed || (placed===best.placed && v>best.value)) best={placed, value:v, path:path.slice(), gain, final:rws};
+  }
+  function dfs(rws, order, k, gain, streak){
+    if (k===order.length){ leaf(rws,k,gain); return; }
+    const pi=order[k], p=pieces[pi]; let any=false;
+    for (let r=0;r<=8-p.h;r++) for (let c=0;c<=8-p.w;c++){
+      let okk=true;
+      for (let i=0;i<p.h;i++) if (rws[r+i] & (p.masks[i]<<c)) { okk=false; break; }
+      if(!okk) continue;
+      any=true;
+      const nx=rws.slice();
+      for (let i=0;i<p.h;i++) nx[r+i]|=p.masks[i]<<c;
+      let fr=0, cols=255;
+      for (let i=0;i<8;i++){ if(nx[i]===255) fr|=1<<i; cols&=nx[i]; }
+      const lines=PC[fr]+PC[cols];
+      if (lines) for (let i=0;i<8;i++) nx[i] = (fr>>i&1) ? 0 : nx[i]&~cols&255;
+      const g = lines ? lines*20 + lines*lines*8 + (streak?15:0) : 0;
+      path.push({pi,r,c});
+      dfs(nx, order, k+1, gain+g, lines>0);
+      path.pop();
+    }
+    if(!any) leaf(rws,k,gain);
+  }
+  for (const order of perms) dfs(rows, order, 0, 0, false);
+  return best;
+}
+
+/* replay a path to get the board before each step plus the cleared lines */
+function replay(rows, pieces, path){
+  const steps=[]; let cur=rows.slice(); let lines=0;
+  for (const s of path){
+    const p=pieces[s.pi]; const before=cur.slice(); const nx=cur.slice();
+    for (let i=0;i<p.h;i++) nx[s.r+i]|=p.masks[i]<<s.c;
+    let fr=0, cols=255; for (let i=0;i<8;i++){ if(nx[i]===255) fr|=1<<i; cols&=nx[i]; }
+    const l=PC[fr]+PC[cols]; lines+=l;
+    const after=nx.slice(); if(l) for (let i=0;i<8;i++) after[i]=(fr>>i&1)?0:after[i]&~cols&255;
+    steps.push({...s, piece:p, before, fr, cols, lines:l}); cur=after;
+  }
+  return {steps, final:cur, lines};
+}
+
+/* ---------- rendering ---------- */
+const $ = id => document.getElementById(id);
+const boardEl=$("board");
+for (let i=0;i<64;i++){ const d=document.createElement("div"); d.className="cell"; d.dataset.i=i; boardEl.appendChild(d); }
+function drawBoard(){ [...boardEl.children].forEach((d,i)=>d.classList.toggle("on", !!(board[i>>3]>>(i&7)&1))); }
+
+function shapeEl(p, color, size){
+  const g=document.createElement("div"); g.className="shape";
+  g.style.gridTemplateColumns=`repeat(${p.w}, auto)`; g.style.setProperty("--c", color); g.style.setProperty("--s", size+"px");
+  for (let r=0;r<p.h;r++) for (let c=0;c<p.w;c++){ const i=document.createElement("i"); if(p.masks[r]>>c&1) i.className="on"; g.appendChild(i); }
+  return g;
+}
+const traysEl=$("trays"); let activeSlot=0;
+function drawTrays(){
+  traysEl.innerHTML="";
+  slots.forEach((p,k)=>{
+    const b=document.createElement("button"); b.type="button"; b.className="tray"+(p?" filled":"");
+    b.setAttribute("aria-label", p ? `Teil ${k+1} ändern` : `Teil ${k+1} wählen`);
+    const t=document.createElement("span"); t.className="tag"; t.textContent=k+1; b.appendChild(t);
+    if (p){ const m=Math.max(p.w,p.h); b.appendChild(shapeEl(p, COLORS[k], Math.min(22, Math.floor(80/m)))); }
+    else { const s=document.createElement("span"); s.className="plus"; s.textContent="+"; b.appendChild(s); }
+    b.addEventListener("click",()=>openSheet(k));
+    traysEl.appendChild(b);
+  });
+}
+function miniBoard(step, k){
+  const el=document.createElement("div"); el.className="board mini";
+  const p=step.piece;
+  for (let i=0;i<64;i++){
+    const r=i>>3, c=i&7, d=document.createElement("div"); d.className="cell";
+    if (step.before[r]>>c&1) d.classList.add("on");
+    const pr=r-step.r, pc=c-step.c;
+    if (pr>=0&&pr<p.h&&pc>=0&&pc<p.w&&(p.masks[pr]>>pc&1)) d.classList.add("p"+(k+1));
+    if ((step.fr>>r&1)||(step.cols>>c&1)) d.classList.add("cl");
+    el.appendChild(d);
+  }
+  return el;
+}
+function drawResult(){
+  const stepsEl=$("steps"), stats=$("stats"), status=$("status");
+  stepsEl.innerHTML=""; stats.innerHTML="";
+  $("example-note").hidden=!isExample;
+  $("plan").hidden=!result;
+  if(!result){ return; }
+  const {best, rp, total} = result;
+  if (best.placed<total){
+    status.className="status bad";
+    status.textContent = best.placed===0 ? "Kein Teil passt mehr. Das ist Game Over." : `Nur ${best.placed} von ${total} Teilen passen. Das hier rettet am meisten.`;
+  } else {
+    status.className="status ok";
+    status.textContent = rp.lines ? `Alle Teile passen, ${rp.lines} ${rp.lines===1?"Linie":"Linien"} werden gelöscht.` : "Alle Teile passen.";
+  }
+  const free=64-[...rp.final].reduce((a,r)=>a+PC[r],0);
+  stats.innerHTML = `<div><span class="label">Gelöschte Linien</span><b>${rp.lines}</b></div><div><span class="label">Freie Felder danach</span><b>${free}</b></div><div><span class="label">Platz für 3×3 danach</span><b>${health3(rp.final)?"Ja":"Nein"}</b></div>`;
+  rp.steps.forEach((s,i)=>{
+    const slot=s.piece.slot;
+    const wrap=document.createElement("div"); wrap.className="step";
+    const head=document.createElement("div"); head.className="head";
+    const dot=document.createElement("span"); dot.className="dot"; dot.style.background=COLORS[slot]; dot.textContent=i+1;
+    const h=document.createElement("strong"); h.textContent=(i===0?"Zuerst":"Dann")+` Teil ${slot+1}`;
+    head.append(dot,h);
+    if (s.lines){ const pl=document.createElement("span"); pl.className="pill"; pl.textContent=`${s.lines}× Linie`; head.appendChild(pl); }
+    const p=document.createElement("p"); p.textContent=`Zeile ${s.r+1}, Spalte ${s.c+1} (obere linke Ecke des Teils)`;
+    wrap.append(head, miniBoard(s, slot), p);
+    stepsEl.appendChild(wrap);
+  });
+}
+function health3(rows){ for (let i=0;i<=5;i++){ const z=~(rows[i]|rows[i+1]|rows[i+2])&255; if (z&(z>>1)&(z>>2)) return true; } return false; }
+
+function runSolve(){
+  const pieces=slots.map((p,i)=>p?{...p,slot:i}:null).filter(Boolean);
+  const status=$("status");
+  if(!pieces.length){ status.className="status bad"; status.textContent="Wähle zuerst mindestens ein Teil."; result=null; drawResult(); return; }
+  status.className="status"; status.textContent="Rechne…";
+  setTimeout(()=>{
+    const best=solve(board.slice(), pieces);
+    const rp=replay(board.slice(), pieces, best.path);
+    result={best, rp, total:pieces.length};
+    drawResult();
+  }, 20);
+}
+
+/* ---------- board painting ---------- */
+let painting=null;
+function cellAt(x,y){ const el=document.elementFromPoint(x,y); return el && el.parentElement===boardEl ? +el.dataset.i : -1; }
+function setCell(i,v){ const r=i>>3,c=i&7; if(v) board[r]|=1<<c; else board[r]&=~(1<<c)&255; }
+boardEl.addEventListener("pointerdown",e=>{
+  const i=cellAt(e.clientX,e.clientY); if(i<0) return;
+  e.preventDefault(); boardEl.setPointerCapture?.(e.pointerId);
+  painting = !(board[i>>3]>>(i&7)&1); setCell(i,painting); drawBoard();
+});
+boardEl.addEventListener("pointermove",e=>{ if(painting===null) return; const i=cellAt(e.clientX,e.clientY); if(i>=0){ setCell(i,painting); drawBoard(); } });
+const endPaint=()=>{ if(painting!==null){ painting=null; touched(); } };
+boardEl.addEventListener("pointerup",endPaint); boardEl.addEventListener("pointercancel",endPaint);
+
+function touched(){ isExample=false; result=null; drawResult(); $("status").textContent=""; save(); }
+
+$("btn-clear").addEventListener("click",()=>{ board=new Uint8Array(8); drawBoard(); touched(); });
+$("btn-invert").addEventListener("click",()=>{ board=board.map(r=>~r&255); drawBoard(); touched(); });
+$("btn-solve").addEventListener("click",runSolve);
+$("btn-apply").addEventListener("click",()=>{
+  if(!result) return;
+  board=Uint8Array.from(result.rp.final); slots=[null,null,null];
+  drawBoard(); drawTrays(); touched();
+  $("status").className="status"; $("status").textContent="Übernommen. Wähle die nächsten drei Teile.";
+});
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>{
+  mode=b.dataset.mode;
+  document.querySelectorAll("[data-mode]").forEach(x=>x.setAttribute("aria-pressed", String(x===b)));
+  save(); if(result) runSolve();
+}));
+
+/* ---------- picker ---------- */
+const sheet=$("sheet"), lib=$("lib");
+LIB.forEach(p=>{
+  const b=document.createElement("button"); b.type="button"; b.setAttribute("aria-label",`Teil mit ${p.n} Feldern`);
+  b.appendChild(shapeEl(p,"var(--filled)", Math.min(12, Math.floor(56/Math.max(p.w,p.h)))));
+  b.addEventListener("click",()=>pick(p)); lib.appendChild(b);
+});
+function openSheet(k){ activeSlot=k; $("h-sheet").textContent=`Teil ${k+1} wählen`; sheet.hidden=false; }
+function closeSheet(){ sheet.hidden=true; }
+function pick(p){ slots[activeSlot]=p; closeSheet(); drawTrays(); touched(); }
+$("btn-close").addEventListener("click",closeSheet);
+$("btn-empty").addEventListener("click",()=>{ slots[activeSlot]=null; closeSheet(); drawTrays(); touched(); });
+sheet.addEventListener("click",e=>{ if(e.target===sheet) closeSheet(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!sheet.hidden) closeSheet(); });
+const editor=$("editor"); const ed=new Set();
+for (let i=0;i<25;i++){ const d=document.createElement("div"); d.className="cell";
+  d.addEventListener("click",()=>{ ed.has(i)?ed.delete(i):ed.add(i); d.classList.toggle("on"); }); editor.appendChild(d); }
+$("btn-custom").addEventListener("click",()=>{
+  if(!ed.size) return;
+  const cells=[...ed].map(i=>[Math.floor(i/5), i%5]);
+  pick(byKey(keyOf(cells)) || makePiece(cells));
+});
+
+/* ---------- boot ---------- */
+if (load()) { isExample=false; } else loadExample();
+document.querySelectorAll("[data-mode]").forEach(x=>x.setAttribute("aria-pressed", String(x.dataset.mode===mode)));
+drawBoard(); drawTrays();
+if (slots.some(Boolean)) runSolve(); else drawResult();
+})();
+</script>
