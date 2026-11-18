@@ -96,14 +96,49 @@ button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:va
 .editor .cell.on{background:var(--accent)}
 details summary{cursor:pointer;font-weight:600}
 .hint{font-size:.85rem;color:var(--muted);margin:0}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+label.btn{font-weight:600;border-radius:10px;padding:11px 16px;cursor:pointer;background:var(--accent);color:var(--accent-fg);display:inline-block}
+input:focus-visible + label.btn{outline:3px solid var(--accent);outline-offset:2px}
+.shotwrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,15rem);gap:16px;align-items:start}
+@media (max-width:640px){.shotwrap{grid-template-columns:minmax(0,1fr)}}
+.shotcv{width:100%;max-width:100%;max-height:70vh;object-fit:contain;border-radius:10px;background:var(--sunk);touch-action:none;display:block}
+.shotside{display:grid;gap:10px;min-width:0}
+.shotside input[type=range]{width:100%}
+.nudge{display:grid;grid-template-columns:repeat(3,44px);gap:6px}
+.nudge button{padding:8px 0}
 @media (prefers-reduced-motion:no-preference){.cell{transition:background .12s}}
 </style>
 
 <main>
   <header>
     <h1>Block-Löser</h1>
-    <p class="lede">Für Block Blast: Tippe das Spielfeld so ab, wie es auf deinem Bildschirm aussieht, wähle die drei Teile unten aus und lass dir die beste Reihenfolge und Position berechnen.</p>
+    <p class="lede">Für Block Blast: Lade einen Screenshot hoch oder tippe das Spielfeld ab. Der Löser zeigt dir die beste Reihenfolge und Position für deine drei Teile.</p>
   </header>
+
+  <section class="panel" aria-labelledby="h-shot">
+    <div class="row spread">
+      <h2 id="h-shot">Screenshot einlesen</h2>
+      <div class="row">
+        <input type="file" id="file" accept="image/*" class="vh">
+        <label class="btn" for="file">Screenshot wählen</label>
+      </div>
+    </div>
+    <p class="hint">Mach im Spiel einen Screenshot (Ein-/Aus-Taste + Lauter), wechsle hierher und wähle ihn aus deinen Fotos. Spielfeld und Teile werden automatisch erkannt und sofort berechnet. Du kannst auch ein kopiertes Bild hier einfügen.</p>
+    <div class="shotwrap" id="shotwrap" hidden>
+      <canvas class="shotcv" id="shotcv" aria-label="Screenshot mit erkanntem Spielfeld"></canvas>
+      <div class="shotside">
+        <p class="status" id="shot-status"></p>
+        <p class="hint">Sitzt der orange Rahmen nicht genau auf dem Spielfeld, zieh ihn mit dem Finger zurecht oder nutze die Pfeile.</p>
+        <label class="label" for="shot-size">Rahmengröße</label>
+        <input type="range" id="shot-size" min="50" max="1000" step="1">
+        <div class="nudge" aria-label="Rahmen verschieben">
+          <span></span><button type="button" class="small" data-nudge="0,-1" aria-label="nach oben">↑</button><span></span>
+          <button type="button" class="small" data-nudge="-1,0" aria-label="nach links">←</button><button type="button" class="small" data-nudge="auto" aria-label="automatisch erkennen">Auto</button><button type="button" class="small" data-nudge="1,0" aria-label="nach rechts">→</button>
+          <span></span><button type="button" class="small" data-nudge="0,1" aria-label="nach unten">↓</button><span></span>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <div class="top">
     <section class="panel" aria-labelledby="h-board">
@@ -347,7 +382,7 @@ function drawResult(){
     status.textContent = best.placed===0 ? "Kein Teil passt mehr. Das ist Game Over." : `Nur ${best.placed} von ${total} Teilen passen. Das hier rettet am meisten.`;
   } else {
     status.className="status ok";
-    status.textContent = rp.lines ? `Alle Teile passen, ${rp.lines} ${rp.lines===1?"Linie":"Linien"} werden gelöscht.` : "Alle Teile passen.";
+    status.textContent = rp.lines ? `Alle Teile passen, ${rp.lines} ${rp.lines===1?"Linie wird":"Linien werden"} gelöscht.` : "Alle Teile passen.";
   }
   const free=64-[...rp.final].reduce((a,r)=>a+PC[r],0);
   stats.innerHTML = `<div><span class="label">Gelöschte Linien</span><b>${rp.lines}</b></div><div><span class="label">Freie Felder danach</span><b>${free}</b></div><div><span class="label">Platz für 3×3 danach</span><b>${health3(rp.final)?"Ja":"Nein"}</b></div>`;
@@ -431,6 +466,179 @@ $("btn-custom").addEventListener("click",()=>{
   const cells=[...ed].map(i=>[Math.floor(i/5), i%5]);
   pick(byKey(keyOf(cells)) || makePiece(cells));
 });
+
+/* ---------- screenshot recognition ---------- */
+const SH = {W:0,H:0,V:null,Q:null,rowPS:null,colPS:null,img:null,fr:null};
+const cv=$("shotcv"), cx=cv.getContext("2d");
+function prepImage(img){
+  const scale=Math.min(1, 720/Math.max(img.naturalWidth,img.naturalHeight));
+  const W=Math.max(1,Math.round(img.naturalWidth*scale)), H=Math.max(1,Math.round(img.naturalHeight*scale));
+  const c=document.createElement("canvas"); c.width=W; c.height=H;
+  const g=c.getContext("2d",{willReadFrequently:true}); g.drawImage(img,0,0,W,H);
+  const d=g.getImageData(0,0,W,H).data;
+  const V=new Float32Array(W*H), Q=new Float32Array(W*H);
+  for (let i=0;i<W*H;i++){
+    const r=d[i*4],gg=d[i*4+1],b=d[i*4+2], mx=Math.max(r,gg,b), mn=Math.min(r,gg,b);
+    V[i]=mx/255; Q[i]=mx? (mx-mn)/255*0.6 + (mx/255)*(mx-mn)/mx*0.4 : 0;
+  }
+  /* colour edge strength: GY for horizontal lines, GX for vertical lines, widened by one pixel */
+  const cd=(i,j)=>(Math.abs(d[i*4]-d[j*4])+Math.abs(d[i*4+1]-d[j*4+1])+Math.abs(d[i*4+2]-d[j*4+2]))/765;
+  const GY=new Float32Array(W*H), GX=new Float32Array(W*H);
+  for (let y=1;y<H-1;y++) for (let x=1;x<W-1;x++){ const i=y*W+x; GY[i]=cd(i-W,i+W); GX[i]=cd(i-1,i+1); }
+  const rowPS=new Float64Array((W+1)*H), colPS=new Float64Array((H+1)*W);
+  for (let y=0;y<H;y++){ let a=0; for (let x=0;x<W;x++){ const i=y*W+x; a+=Math.max(GY[i],y>0?GY[i-W]:0,y<H-1?GY[i+W]:0); rowPS[y*(W+1)+x+1]=a; } }
+  for (let x=0;x<W;x++){ let a=0; for (let y=0;y<H;y++){ const i=y*W+x; a+=Math.max(GX[i],x>0?GX[i-1]:0,x<W-1?GX[i+1]:0); colPS[x*(H+1)+y+1]=a; } }
+  Object.assign(SH,{W,H,V,Q,D:d,rowPS,colPS,img});
+}
+function gridScore(x0,y0,s){
+  const {W,H,rowPS,colPS}=SH;
+  const X1=Math.round(x0+s), Y1=Math.round(y0+s);
+  if (x0<0||y0<0||X1>W||Y1>H) return -9;
+  const hl=y=>{ y=Math.min(H-1,Math.round(y)); return (rowPS[y*(W+1)+X1]-rowPS[y*(W+1)+x0])/(X1-x0); };
+  const vl=x=>{ x=Math.min(W-1,Math.round(x)); return (colPS[x*(H+1)+Y1]-colPS[x*(H+1)+y0])/(Y1-y0); };
+  const c=s/8; let g=0,m=0;
+  for (let k=0;k<=8;k++){ g+=hl(y0+k*c-(k===8?1:0))+vl(x0+k*c-(k===8?1:0)); }
+  for (let k=0;k<8;k++){ m+=hl(y0+(k+.5)*c)+vl(x0+(k+.5)*c); }
+  return g/18 - m/16;
+}
+const gridScore2=gridScore;
+function findBoard(){
+  const {W,H}=SH; const mn=Math.min(W,H);
+  let best={sc:-9};
+  const st=Math.max(2,Math.round(mn/160));
+  for (let s=Math.round(mn*0.4); s<=mn; s+=st)
+    for (let y=0;y+s<=H;y+=st) for (let x=0;x+s<=W;x+=st){
+      const sc=gridScore2(x,y,s); if (sc>best.sc) best={sc,x,y,s};
+    }
+  if (best.sc<=-9) return {x:0,y:0,s:mn,sc:0};
+  let b=best;
+  for (let ds=-st;ds<=st;ds++) for (let dy=-st;dy<=st;dy++) for (let dx=-st;dx<=st;dx++){
+    const sc=gridScore2(best.x+dx,best.y+dy,best.s+ds); if (sc>b.sc) b={sc,x:best.x+dx,y:best.y+dy,s:best.s+ds};
+  }
+  return b;
+}
+function regionMean(arr,x0,y0,x1,y1){
+  const {W,H}=SH; x0=Math.max(0,Math.round(x0)); y0=Math.max(0,Math.round(y0)); x1=Math.min(W,Math.round(x1)); y1=Math.min(H,Math.round(y1));
+  let a=0,n=0; for (let y=y0;y<y1;y++) for (let x=x0;x<x1;x++){ a+=arr[y*W+x]; n++; } return n?a/n:0;
+}
+function readBoard(f){
+  const c=f.s/8, q=[];
+  for (let r=0;r<8;r++) for (let k=0;k<8;k++){
+    const x=f.x+k*c, y=f.y+r*c;
+    q.push(regionMean(SH.V, x+c*.28, y+c*.28, x+c*.72, y+c*.72));
+  }
+  /* split cell brightness into dark (empty) and bright (filled) with Otsu */
+  const sorted=[...q].sort((a,b)=>a-b); let thr=0.5, bestVar=-1, sep=0;
+  for (let i=1;i<64;i++){
+    const a=sorted.slice(0,i), b=sorted.slice(i);
+    const ma=a.reduce((x,y)=>x+y,0)/a.length, mb=b.reduce((x,y)=>x+y,0)/b.length;
+    const v=a.length*b.length*(mb-ma)**2; if (v>bestVar){ bestVar=v; thr=(sorted[i-1]+sorted[i])/2; sep=mb-ma; }
+  }
+  if (sep<0.2) thr=0.5;
+  const rows=new Uint8Array(8);
+  q.forEach((v,i)=>{ if (v>thr) rows[i>>3]|=1<<(i&7); });
+  return {rows,thr};
+}
+function readPieces(f,thr){
+  const {W,H,Q}=SH; const s=f.s, bc=s/8;
+  const x0=Math.max(0,Math.round(f.x-s*0.08)), x1=Math.min(W,Math.round(f.x+s*1.08));
+  const y0=Math.min(H,Math.round(f.y+s+bc*0.25)), y1=Math.min(H,Math.round(f.y+s*1.75));
+  const rw=x1-x0, rh=y1-y0; if (rw<=0||rh<=0) return [null,null,null];
+  /* a pixel belongs to a piece when its colour differs clearly from the background,
+     taken as the most common colour in each band of 8 rows (the background survives even under wide pieces) */
+  const D=SH.D, m=new Uint8Array(rw*rh);
+  for (let y=0;y<rh;y+=8){
+    const ye=Math.min(rh,y+8), cnt=new Map();
+    for (let yy=y;yy<ye;yy++) for (let x=0;x<rw;x++){ const i=((yy+y0)*W+x+x0)*4; const k=(D[i]>>4)<<8|(D[i+1]>>4)<<4|(D[i+2]>>4); cnt.set(k,(cnt.get(k)||0)+1); }
+    let mk=0, mc=-1; for (const [k,c] of cnt) if (c>mc){mc=c;mk=k;}
+    let sr=0,sg=0,sb=0,n=0;
+    for (let yy=y;yy<ye;yy++) for (let x=0;x<rw;x++){ const i=((yy+y0)*W+x+x0)*4; if (((D[i]>>4)<<8|(D[i+1]>>4)<<4|(D[i+2]>>4))===mk){ sr+=D[i]; sg+=D[i+1]; sb+=D[i+2]; n++; } }
+    const mr=sr/n, mg=sg/n, mb=sb/n;
+    for (let yy=y;yy<ye;yy++) for (let x=0;x<rw;x++){ const i=((yy+y0)*W+x+x0)*4; m[yy*rw+x]=Math.hypot(D[i]-mr,D[i+1]-mg,D[i+2]-mb)>60?1:0; }
+  }
+  const lab=new Int32Array(rw*rh), comps=[]; let id=0;
+  for (let i=0;i<rw*rh;i++){ if(!m[i]||lab[i]) continue; id++; const st=[i]; lab[i]=id;
+    let mnx=1e9,mny=1e9,mxx=-1,mxy=-1,n=0;
+    while(st.length){ const j=st.pop(), x=j%rw, y=(j/rw)|0; n++; if(x<mnx)mnx=x; if(x>mxx)mxx=x; if(y<mny)mny=y; if(y>mxy)mxy=y;
+      for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++){ const xx=x+dx, yy=y+dy; if(xx<0||yy<0||xx>=rw||yy>=rh) continue; const k=yy*rw+xx; if(m[k]&&!lab[k]){lab[k]=id;st.push(k);} } }
+    comps.push({n,mnx,mny,mxx,mxy});
+  }
+  const minArea=(bc*0.25)*(bc*0.25);
+  const slots=[[],[],[]];
+  for (const c of comps){ if (c.n<minArea) continue; const w=c.mxx-c.mnx+1, h=c.mxy-c.mny+1; if (w>s*0.5||h>s*0.6) continue;
+    const ccx=(c.mnx+c.mxx)/2 + x0 - f.x; const k=Math.max(0,Math.min(2,Math.floor(ccx/(s/3)))); slots[k].push(c); }
+  const boxes=slots.map(l=>l.length?{x:Math.min(...l.map(c=>c.mnx)),y:Math.min(...l.map(c=>c.mny)),X:Math.max(...l.map(c=>c.mxx))+1,Y:Math.max(...l.map(c=>c.mxy))+1}:null);
+  const dims=boxes.filter(Boolean).flatMap(b=>[b.X-b.x,b.Y-b.y]);
+  if (!dims.length) return [null,null,null];
+  let bestT=null, bestE=9, cands=[];
+  for (let t=bc*0.3;t<=bc*1.05;t+=0.25){
+    let e=0, ok=true; for (const d of dims){ const n=Math.round(d/t); if(n<1||n>5){ok=false;break;} e=Math.max(e,Math.abs(d/t-n)); }
+    if(!ok) continue; cands.push([t,e]); if(e<bestE){bestE=e;bestT=t;}
+  }
+  const good=cands.filter(([t,e])=>e<0.2); if (good.length) bestT=Math.max(...good.map(g=>g[0]));
+  if (!bestT) return [null,null,null];
+  SH.pieceBoxes=boxes.map(b=>b&&{x:b.x+x0,y:b.y+y0,X:b.X+x0,Y:b.Y+y0});
+  return boxes.map(b=>{
+    if(!b) return null;
+    const cols=Math.max(1,Math.round((b.X-b.x)/bestT)), rws=Math.max(1,Math.round((b.Y-b.y)/bestT));
+    const cw=(b.X-b.x)/cols, ch=(b.Y-b.y)/rws, cells=[];
+    for (let r=0;r<rws;r++) for (let c=0;c<cols;c++){
+      let a=0,n=0; for (let y=Math.round(b.y+(r+.3)*ch); y<b.y+(r+.7)*ch; y++) for (let x=Math.round(b.x+(c+.3)*cw); x<b.x+(c+.7)*cw; x++){ a+=m[y*rw+x]; n++; }
+      if (n && a/n>0.5) cells.push([r,c]);
+    }
+    return cells.length? byKey(keyOf(cells)) : null;
+  });
+}
+function drawShot(){
+  const {img,W,H,fr}=SH; if(!img) return;
+  cv.width=W; cv.height=H; cx.drawImage(img,0,0,W,H);
+  const c=fr.s/8;
+  cx.lineWidth=Math.max(2,W/250); cx.strokeStyle="#f5a03a";
+  cx.strokeRect(fr.x,fr.y,fr.s,fr.s);
+  cx.lineWidth=Math.max(1,W/500); cx.beginPath();
+  for (let k=1;k<8;k++){ cx.moveTo(fr.x+k*c,fr.y); cx.lineTo(fr.x+k*c,fr.y+fr.s); cx.moveTo(fr.x,fr.y+k*c); cx.lineTo(fr.x+fr.s,fr.y+k*c); }
+  cx.stroke();
+  for (let i=0;i<64;i++) if (board[i>>3]>>(i&7)&1){ cx.fillStyle="rgba(255,255,255,.9)"; cx.beginPath(); cx.arc(fr.x+((i&7)+.5)*c, fr.y+((i>>3)+.5)*c, c*.12, 0, 7); cx.fill(); }
+  (SH.pieceBoxes||[]).forEach((b,k)=>{ if(!b) return; cx.strokeStyle=["#f5a03a","#2fc2ad","#ef6a8c"][k]; cx.lineWidth=Math.max(2,W/300); cx.strokeRect(b.x-3,b.y-3,b.X-b.x+6,b.Y-b.y+6); });
+}
+function applyShot(){
+  const f=SH.fr; const {rows,thr}=readBoard(f);
+  SH.pieceBoxes=null;
+  const ps=readPieces(f,thr);
+  board=rows; slots=ps;
+  isExample=false; drawBoard(); drawTrays(); save(); drawShot();
+  const nP=ps.filter(Boolean).length;
+  const st=$("shot-status");
+  st.className="status "+(nP?"ok":"bad");
+  st.textContent = nP===3 ? "Spielfeld und 3 Teile erkannt." : nP ? `Spielfeld erkannt, aber nur ${nP} von 3 Teilen. Fehlende bitte unten antippen und wählen.` : "Spielfeld erkannt, aber keine Teile. Bitte unten von Hand wählen.";
+  if (nP) runSolve(); else { result=null; drawResult(); }
+}
+async function handleFile(file){
+  if (!file || !file.type.startsWith("image/")) return;
+  const st=$("shot-status"); $("shotwrap").hidden=false; st.className="status"; st.textContent="Erkenne…";
+  try{
+    const url=URL.createObjectURL(file); const img=new Image(); img.src=url; await img.decode();
+    prepImage(img);
+    await new Promise(r=>setTimeout(r,20));
+    SH.fr=findBoard();
+    const sz=$("shot-size"); sz.max=Math.min(SH.W,SH.H); sz.min=Math.round(Math.min(SH.W,SH.H)*0.2); sz.value=SH.fr.s;
+    applyShot();
+  }catch(e){ st.className="status bad"; st.textContent="Das Bild konnte nicht gelesen werden. Versuch einen anderen Screenshot."; }
+}
+$("file").addEventListener("change",e=>{ handleFile(e.target.files[0]); e.target.value=""; });
+document.addEventListener("paste",e=>{ const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith("image/")); if(it) handleFile(it.getAsFile()); });
+$("shot-size").addEventListener("input",e=>{ if(!SH.fr) return; const ns=+e.target.value, d=(ns-SH.fr.s)/2; SH.fr={...SH.fr,s:ns,x:Math.round(SH.fr.x-d),y:Math.round(SH.fr.y-d)}; applyShot(); });
+document.querySelectorAll("[data-nudge]").forEach(b=>b.addEventListener("click",()=>{
+  if(!SH.fr) return;
+  if (b.dataset.nudge==="auto"){ SH.fr=findBoard(); $("shot-size").value=SH.fr.s; }
+  else { const [dx,dy]=b.dataset.nudge.split(",").map(Number); SH.fr={...SH.fr,x:SH.fr.x+dx,y:SH.fr.y+dy}; }
+  applyShot();
+}));
+let drag=null;
+cv.addEventListener("pointerdown",e=>{ if(!SH.fr) return; const r=cv.getBoundingClientRect(); drag={px:e.clientX,py:e.clientY,k:SH.W/r.width,fx:SH.fr.x,fy:SH.fr.y}; cv.setPointerCapture?.(e.pointerId); e.preventDefault(); });
+cv.addEventListener("pointermove",e=>{ if(!drag) return; SH.fr={...SH.fr,x:Math.round(drag.fx+(e.clientX-drag.px)*drag.k),y:Math.round(drag.fy+(e.clientY-drag.py)*drag.k)}; drawShot(); });
+const endDrag=()=>{ if(drag){ drag=null; applyShot(); } };
+cv.addEventListener("pointerup",endDrag); cv.addEventListener("pointercancel",endDrag);
 
 /* ---------- boot ---------- */
 if (load()) { isExample=false; } else loadExample();
